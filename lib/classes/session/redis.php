@@ -35,6 +35,7 @@ defined('MOODLE_INTERNAL') || die();
  */
 
 class redis extends handler {
+    protected $savepath;
     protected $serverip;
     protected $port = 6379;
     protected $prefix;
@@ -54,9 +55,7 @@ class redis extends handler {
             $this->serverip = $CFG->session_redis_serverip;
         }
 
-        if (empty($CFG->session_redis_prefix)) {
-            $this->prefix = '';
-        } else {
+        if (!empty($CFG->session_redis_prefix)) {
             $this->prefix = $CFG->session_redis_prefix;
         }
 
@@ -72,8 +71,10 @@ class redis extends handler {
             $this->acquiretimeout = $CFG->session_redis_acquire_lock_timeout;
         }
 
-        if (!empty($CFG->session_redis_lock_expire)) {
-            $this->lockexpire = $CFG->session_redis_lock_expire;
+        $this->savepath = 'tcp://' . $this->serverip . ':' . $this->port . '?database=' . $this->database;
+
+        if (!empty($CFG->session_redis_prefix)) {
+            $this->savepath .= '&prefix=' . $this->prefix;
         }
     }
 
@@ -105,7 +106,7 @@ class redis extends handler {
         }
 
         ini_set('session.save_handler', 'redis');
-        ini_set('session.save_path', 'tcp://' . $this->serverip . ':' . $this->port . '?database=' . $this->database );
+        ini_set('session.save_path', $this->savepath);
     }
 
     /**
