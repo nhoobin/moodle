@@ -117,6 +117,7 @@ class redis extends handler {
     public function session_exists($sid) {
         $redis = new \Redis();
         $redis->connect($this->serverip, $this->port);
+        $redis->select($this->database);
         $value = $redis->get($this->prefix . $sid);
         $redis->close();
 
@@ -136,6 +137,7 @@ class redis extends handler {
 
         $redis = new \Redis();
         $redis->connect($this->serverip, $this->port);
+        $redis->select($this->database);
 
         $rs = $DB->get_recordset('sessions', array(), 'id DESC', 'id, sid');
         foreach ($rs as $record) {
@@ -151,6 +153,7 @@ class redis extends handler {
     public function kill_session($sid) {
         $redis = new \Redis();
         $redis->connect($this->serverip, $this->port);
+        $redis->select($this->database);
         $redis->delete($this->prefix . $sid);
         $redis->close();
     }
