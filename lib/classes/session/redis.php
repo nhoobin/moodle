@@ -112,7 +112,8 @@ class redis extends handler {
         }
 
         if (empty($this->serverip)) {
-            throw new exception('sessionhandlerproblem', 'error', '', null, '$CFG->session_redis_serverip must be specified in config.php');
+            throw new exception('sessionhandlerproblem', 'error', '', null,
+                '$CFG->session_redis_serverip must be specified in config.php');
         }
 
         ini_set('session.save_handler', 'redis');
