@@ -35,13 +35,23 @@ defined('MOODLE_INTERNAL') || die();
  */
 
 class redis extends handler {
+    /** @var string $savepath sav_path string */
     protected $savepath;
+
+    /** @var string $serverip redis server ip address */
     protected $serverip;
+
+    /** @var int $port redis server port */
     protected $port = 6379;
-    protected $prefix;
+
+    /** @var string $prefix prefix used to identify session, defaults to value */
+    protected $prefix = 'PHPREDIS_SESSION:';
+
+    /** @var int $database the redis database that will be used, default values from 0-15 */
     protected $database = 0;
+
+    /** @var int $acquiretimeout how long to wait for session lock */
     protected $acquiretimeout = 120;
-    protected $lockexpire = 7200;
 
     /**
      * Create new instance of handler.
@@ -111,6 +121,8 @@ class redis extends handler {
 
     /**
      * Check the backend contains data for this session id.
+     *
+     * Note: this is intended to be called from manager::session_exists() only.
      *
      * @param string $sid
      * @return bool true if session found.
