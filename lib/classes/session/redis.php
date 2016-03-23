@@ -218,6 +218,11 @@ class redis extends handler {
             $con = trim($con);
             $con = parse_url($con);
 
+            // Seriously wrong url, parse_url failed.
+            if ($con === false) {
+                continue;
+            }
+
             // Parsing the query string.
             if (isset($con['query'])) {
                 $query = $con['query'];
@@ -237,6 +242,18 @@ class redis extends handler {
             // Setting the default prefix.
             if (!isset($con['prefix'])) {
                 $con['prefix'] = 'PHPREDIS_SESSION:';
+            }
+
+            // Setting the default database.
+            if (!isset($con['database'])) {
+                $con['database'] = 0;
+            }
+
+            // If there has not been a scheme set in the string then
+            // the return object will not have a 'host', but 'path'.
+            if (isset($con['path'])) {
+                $con['host'] = $con['path'];
+                unset($con['path']);
             }
 
             $servers[] = $con;
