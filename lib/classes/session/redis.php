@@ -33,22 +33,12 @@ defined('MOODLE_INTERNAL') || die();
  * @copyright  2016 Nicholas Hoobin <nicholashoobin@catalyst-au.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
 class redis extends handler {
     /** @var string $savepath sav_path string */
     protected $savepath;
 
-    /** @var string $serverip redis server ip address */
-    protected $serverip;
-
-    /** @var int $port redis server port */
-    protected $port = 6379;
-
-    /** @var string $prefix prefix used to identify session, defaults to value */
-    protected $prefix = 'PHPREDIS_SESSION:';
-
-    /** @var int $database the redis database that will be used, default values from 0-15 */
-    protected $database = 0;
+    /** @var array $servers list of servers parsed from save_path */
+    protected $servers;
 
     /** @var int $acquiretimeout how long to wait for session lock */
     protected $acquiretimeout = 120;
@@ -59,33 +49,22 @@ class redis extends handler {
     public function __construct() {
         global $CFG;
 
-        if (empty($CFG->session_redis_serverip)) {
-            $this->serverip = '';
-        } else {
-            $this->serverip = $CFG->session_redis_serverip;
-        }
-
-        if (!empty($CFG->session_redis_prefix)) {
-            $this->prefix = $CFG->session_redis_prefix;
-        }
-
-        if (!empty($CFG->session_redis_port)) {
-            $this->port = $CFG->session_redis_port;
-        }
-
-        if (!empty($CFG->session_redis_database)) {
-            $this->database = $CFG->session_redis_database;
-        }
-
         if (!empty($CFG->session_redis_acquire_lock_timeout)) {
             $this->acquiretimeout = $CFG->session_redis_acquire_lock_timeout;
         }
 
-        $this->savepath = 'tcp://' . $this->serverip . ':' . $this->port . '?database=' . $this->database;
-
-        if (!empty($CFG->session_redis_prefix)) {
-            $this->savepath .= '&prefix=' . $this->prefix;
+        if (empty($CFG->session_redis_save_path)) {
+            $this->savepath = '';
+        } else {
+            $this->savepath = $CFG->session_redis_save_path;
         }
+
+        if (empty($this->savepath)) {
+            $this->servers = array();
+        } else {
+            $this->servers = $this->connection_string_to_redis_servers($this->savepath);
+        }
+
     }
 
     /**
@@ -111,9 +90,9 @@ class redis extends handler {
             throw new exception('sessionhandlerproblem', 'error', '', null, 'redis extension is not loaded');
         }
 
-        if (empty($this->serverip)) {
+        if (empty($this->savepath)) {
             throw new exception('sessionhandlerproblem', 'error', '', null,
-                '$CFG->session_redis_serverip must be specified in config.php');
+                '$CFG->session_redis_save_path must be specified in config.php');
         }
 
         ini_set('session.save_handler', 'redis');
@@ -129,14 +108,20 @@ class redis extends handler {
      * @return bool true if session found.
      */
     public function session_exists($sid) {
-        $redis = new \Redis();
-        $redis->connect($this->serverip, $this->port);
-        $redis->select($this->database);
-        $value = $redis->get($this->prefix . $sid);
-        $redis->close();
+        if (!$this->servers) {
+            return false;
+        }
 
-        if ($value !== false) {
-            return true;
+        foreach ($this->servers as $server) {
+            $redis = new \Redis();
+            $redis->connect($server['host'], $server['port']);
+            $redis->select($server['database']);
+            $value = $redis->get($server['prefix'] . $sid);
+            $redis->close();
+
+            if ($value !== false) {
+                return true;
+            }
         }
 
         return false;
@@ -148,16 +133,30 @@ class redis extends handler {
      */
     public function kill_all_sessions() {
         global $DB;
+        if (!$this->servers) {
+            return false;
+        }
 
-        $redis = new \Redis();
-        $redis->connect($this->serverip, $this->port);
-        $redis->select($this->database);
+        $serverlist = array();
+        foreach ($this->servers as $server) {
+            $redis = new \Redis();
+            $redis->connect($server['host'], $server['port']);
+            $redis->select($server['database']);
+            $serverlist[] = array($redis, $server['prefix']);
+        }
 
         $rs = $DB->get_recordset('sessions', array(), 'id DESC', 'id, sid');
         foreach ($rs as $record) {
-            $redis->delete($this->prefix . $sid);
+            foreach ($serverlist as $arr) {
+                list($server, $prefix) = $arr;
+                $server->delete($prefix . $sid);
+            }
         }
-        $redis->close();
+
+        foreach ($serverlist as $arr) {
+            list($server, $prefix) = $arr;
+            $server->close();
+        }
     }
 
     /**
@@ -165,10 +164,84 @@ class redis extends handler {
      * @param string $sid
      */
     public function kill_session($sid) {
-        $redis = new \Redis();
-        $redis->connect($this->serverip, $this->port);
-        $redis->select($this->database);
-        $redis->delete($this->prefix . $sid);
-        $redis->close();
+        if (!$this->servers) {
+            return false;
+        }
+
+        // Go through the list of all servers because
+        // we do not know where the session handler put the
+        // data.
+
+        foreach ($this->servers as $server) {
+            $redis = new \Redis();
+            $redis->connect($server['host'], $server['port']);
+            $redis->select($server['database']);
+            $redis->delete($server['prefix'] . $sid);
+            $redis->close();
+        }
+    }
+
+    /**
+     * Convert a connection string to an array of servers
+     *
+     * EG: Converts: "tcp://host1:123?database=0, tcp://host2?database=0&prefix=example" to
+     *
+     *  array(
+     *      (
+     *          [scheme]   => 'tcp',
+     *          [host]     => 'host1',
+     *          [port]     => 123,
+     *          [database] => 0,
+     *          [prefix]   => 'PHPREDIS_SESSION:'
+     *      ),
+     *      (
+     *          [scheme]   => 'tcp',
+     *          [host]     => 'host2',
+     *          [port]     => 6379,
+     *          [database] => 0,
+     *          [prefix]   => 'example'
+     *      )
+     *  )
+     *
+     * @copyright  2016 Nicholas Hoobin <nicholashoobin@catalyst-au.net>
+     * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+     * @author     Nicholas Hoobin
+     *
+     * @param string $str save_path value containing memcached connection string
+     * @return array
+     */
+    private function connection_string_to_redis_servers($str) {
+        $servers     = array();
+        $connections = explode(',', $str);
+
+        foreach ($connections as $con) {
+            $con = trim($con);
+            $con = parse_url($con);
+
+            // Parsing the query string.
+            if (isset($con['query'])) {
+                $query = $con['query'];
+                $parts = explode('&', $query);
+
+                foreach ($parts as $part) {
+                    list($key, $value) = explode('=', $part);
+                    $con[$key] = $value;
+                }
+            }
+
+            // Setting the default port.
+            if (!isset($con['port'])) {
+                $con['port'] = 6379;
+            }
+
+            // Setting the default prefix.
+            if (!isset($con['prefix'])) {
+                $con['prefix'] = 'PHPREDIS_SESSION:';
+            }
+
+            $servers[] = $con;
+        }
+
+        return $servers;
     }
 }
