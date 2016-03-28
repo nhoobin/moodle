@@ -90,6 +90,12 @@ class redis extends handler {
             throw new exception('sessionhandlerproblem', 'error', '', null, 'redis extension is not loaded');
         }
 
+        // The session handler requires a version of Redis with the SETEX command (at least 2.0).
+        $version = phpversion('Redis');
+        if (!$version or version_compare($version, '2.0') <= 0) {
+            throw new exception('sessionhandlerproblem', 'error', '', null, 'redis extension version must be at least 2.0');
+        }
+
         if (empty($this->savepath)) {
             throw new exception('sessionhandlerproblem', 'error', '', null,
                 '$CFG->session_redis_save_path must be specified in config.php');
