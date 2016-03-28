@@ -113,11 +113,10 @@ class redis extends handler {
         }
 
         foreach ($this->servers as $server) {
-            $redis = new \Redis();
-            $redis->connect($server['host'], $server['port']);
-            $redis->select($server['database']);
-            $value = $redis->get($server['prefix'] . $sid);
-            $redis->close();
+            if ($redis = $this->redis_connect($server)) {
+                $value = $redis->get($server['prefix'] . $sid);
+                $redis->close();
+            }
 
             if ($value !== false) {
                 return true;
@@ -139,10 +138,9 @@ class redis extends handler {
 
         $serverlist = array();
         foreach ($this->servers as $server) {
-            $redis = new \Redis();
-            $redis->connect($server['host'], $server['port']);
-            $redis->select($server['database']);
-            $serverlist[] = array($redis, $server['prefix']);
+            if ($redis = $this->redis_connect($server)) {
+                $serverlist[] = array($redis, $server['prefix']);
+            }
         }
 
         $rs = $DB->get_recordset('sessions', array(), 'id DESC', 'id, sid');
@@ -173,18 +171,18 @@ class redis extends handler {
         // data.
 
         foreach ($this->servers as $server) {
-            $redis = new \Redis();
-            $redis->connect($server['host'], $server['port']);
-            $redis->select($server['database']);
-            $redis->delete($server['prefix'] . $sid);
-            $redis->close();
+            if ($redis = $this->redis_connect($server)) {
+                $redis->delete($server['prefix'] . $sid);
+                $redis->close();
+            }
         }
     }
 
     /**
      * Convert a connection string to an array of servers
      *
-     * EG: Converts: "tcp://host1:123?database=0, tcp://host2?database=0&prefix=example" to
+     * Example conversion,
+     * "tcp://host1:123?database=0, unix:///var/run/redis/redis.sock?database=0" to
      *
      *  array(
      *      (
@@ -195,11 +193,10 @@ class redis extends handler {
      *          [prefix]   => 'PHPREDIS_SESSION:'
      *      ),
      *      (
-     *          [scheme]   => 'tcp',
-     *          [host]     => 'host2',
-     *          [port]     => 6379,
+     *          [scheme]   => 'unix',
+     *          [path]     => '/var/run/redis/redis.sock',
      *          [database] => 0,
-     *          [prefix]   => 'example'
+     *          [prefix]   => 'PHPREDIS_SESSION:'
      *      )
      *  )
      *
@@ -216,27 +213,18 @@ class redis extends handler {
 
         foreach ($connections as $con) {
             $con = trim($con);
-            $con = parse_url($con);
 
-            // Seriously wrong url, parse_url failed.
+            if (strpos($con, "unix:///") !== false) {
+                $con = $this->parse_unix_sock($con);
+
+            } else if (strpos($con, "tcp://") !== false) {
+                $con = $this->parse_url_custom($con);
+
+            }
+
+            // Parsing failed.
             if ($con === false) {
                 continue;
-            }
-
-            // Parsing the query string.
-            if (isset($con['query'])) {
-                $query = $con['query'];
-                $parts = explode('&', $query);
-
-                foreach ($parts as $part) {
-                    list($key, $value) = explode('=', $part);
-                    $con[$key] = $value;
-                }
-            }
-
-            // Setting the default port.
-            if (!isset($con['port'])) {
-                $con['port'] = 6379;
             }
 
             // Setting the default prefix.
@@ -249,16 +237,133 @@ class redis extends handler {
                 $con['database'] = 0;
             }
 
-            // If there has not been a scheme set in the string then
-            // the return object will not have a 'host', but 'path'.
-            if (isset($con['path'])) {
-                $con['host'] = $con['path'];
-                unset($con['path']);
-            }
-
             $servers[] = $con;
         }
 
         return $servers;
     }
+
+    /**
+     * Parses the tcp connection string and returns an object.
+     * @param string $con connection string
+     * @return object $con connection data object
+     */
+    private function parse_url_custom($con) {
+        $con = parse_url($con);
+
+        // Seriously wrong url, parsing failed.
+        if ($con === false) {
+            return false;
+        }
+
+        // Parsing the query string.
+        if (isset($con['query'])) {
+            $query = $con['query'];
+            $parts = explode('&', $query);
+
+            foreach ($parts as $part) {
+                list($key, $value) = explode('=', $part);
+                $con[$key] = $value;
+            }
+        }
+
+        return $con;
+
+    }
+
+    /**
+     * Parses the unix domain socket connection string and returns an object.
+     * @param string $con connection string
+     * @return object $con connection data object
+     */
+    private function parse_unix_sock($con) {
+        // Lets use parse_url to get the bits we need.
+        // To use this, replace the three slashes with two slashes.
+        $con = str_replace(":///", "://", $con);
+        $con = parse_url($con);
+
+        // Seriously wrong url, parsing failed.
+        if ($con === false) {
+            return false;
+        }
+
+        /* Eg. host = var
+               path = run/redis/redis.sock
+               new path = /var/run/redis/redis.sock
+        */
+        $con['path'] = '/' . $con['host'] . $con['path'];
+        unset($con['host']);
+
+        // Parsing the query string.
+        if (isset($con['query'])) {
+            $query = $con['query'];
+            $parts = explode('&', $query);
+
+            foreach ($parts as $part) {
+                list($key, $value) = explode('=', $part);
+                $con[$key] = $value;
+            }
+        }
+
+        return $con;
+    }
+
+    /**
+     * Connects to the Redis server with the details from the connection object.
+     * @param object $con connection details object
+     * @return redis $redis redis connection
+     */
+    private function redis_connect($con) {
+        $redis = new \Redis();
+
+        // None of the save_path items were parsed correctly (tcp/unix).
+        if (!isset($con['scheme'])) {
+            return false;
+        }
+
+        if (isset($con['persistent'])) {
+            // Dealing with persistent connections first.
+            if (strcmp($con['scheme'], 'tcp') == 0) {
+                // Only TCP connections will have a port, default 6379.
+                if (isset($con['timeout']) && isset($con['port'])) {
+                    $result = $redis->pconnect($con['host'], $con['port'], $con['timeout']);
+                } else if (isset($con['timeout'])) {
+                    $result = $redis->pconnect($con['host'], 6379, $con['timeout']);
+                } else if (isset($con['port'])) {
+                    $result = $redis->pconnect($con['host'], $con['port']);
+                } else {
+                    $result = $redis->pconnect($con['host']);
+                }
+            } else if (strcmp($con['scheme'], 'unix') == 0) {
+                // Unix domain socket.
+                $result = $redis->pconnect($con['path']);
+            }
+        } else {
+            // Standard connections that colse with $redis->close().
+            if (strcmp($con['scheme'], 'tcp') == 0) {
+                // Only TCP connections will have a port, default 6379.
+                if (isset($con['timeout']) && isset($con['port'])) {
+                    $result = $redis->connect($con['host'], $con['port'], $con['timeout']);
+                } else if (isset($con['timeout'])) {
+                    $result = $redis->connect($con['host'], 6379, $con['timeout']);
+                } else if (isset($con['port'])) {
+                    $result = $redis->connect($con['host'], $con['port']);
+                } else {
+                    $result = $redis->connect($con['host']);
+                }
+            } else if (strcmp($con['scheme'], 'unix') == 0) {
+                // Unix domain socket.
+                $result = $redis->connect($con['path']);
+            }
+        }
+
+        if ($result == true) {
+            $redis->select($con['database']);
+        } else {
+            return false;
+        }
+
+        return $redis;
+    }
 }
+
