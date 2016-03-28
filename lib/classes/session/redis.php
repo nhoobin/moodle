@@ -34,7 +34,7 @@ defined('MOODLE_INTERNAL') || die();
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class redis extends handler {
-    /** @var string $savepath sav_path string */
+    /** @var string $savepath save_path string */
     protected $savepath;
 
     /** @var array $servers list of servers parsed from save_path */
@@ -210,7 +210,7 @@ class redis extends handler {
      * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
      * @author     Nicholas Hoobin
      *
-     * @param string $str save_path value containing memcached connection string
+     * @param string $str save_path value containing redis connection string
      * @return array
      */
     private function connection_string_to_redis_servers($str) {
@@ -345,7 +345,7 @@ class redis extends handler {
                 $result = $redis->pconnect($con['path']);
             }
         } else {
-            // Standard connections that colse with $redis->close().
+            // Standard connections that close with $redis->close().
             if (strcmp($con['scheme'], 'tcp') == 0) {
                 // Only TCP connections will have a port, default 6379.
                 if (isset($con['timeout']) && isset($con['port'])) {
