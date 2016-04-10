@@ -237,6 +237,11 @@ if (!defined('NO_DEBUG_DISPLAY')) {
     }
 }
 
+// IPBlocking needs to render its own page, prevent output rendering.
+if (!defined('NO_IPBLOCK_TEST')) {
+    define('NO_IPBLOCK_TEST', false);
+}
+
 // Some scripts such as upgrade may want to prevent output buffering
 if (!defined('NO_OUTPUT_BUFFERING')) {
     define('NO_OUTPUT_BUFFERING', false);
@@ -964,56 +969,74 @@ if (!empty($CFG->customscripts)) {
 
 if (PHPUNIT_TEST) {
     // no ip blocking, these are CLI only
+} else if (NO_IPBLOCK_TEST) {
+    // Prevent blocking when serving js/css/images with themed output.
+} else if (AJAX_SCRIPT) {
+    // Prevent ajax callback errors when blocked and clicking on the page.
 } else if (CLI_SCRIPT and !defined('WEB_CRON_EMULATED_CLI')) {
     // no ip blocking
-} else if (!empty($CFG->allowbeforeblock)) { // allowed list processed before blocked list?
-    // in this case, ip in allowed list will be performed first
-    // for example, client IP is 192.168.1.1
-    // 192.168 subnet is an entry in allowed list
-    // 192.168.1.1 is banned in blocked list
-    // This ip will be banned finally
-    if (!empty($CFG->allowedip)) {
-        if (!remoteip_in_list($CFG->allowedip)) {
-            die(get_string('ipblocked', 'admin'));
-        }
-    }
-    // need further check, client ip may a part of
-    // allowed subnet, but a IP address are listed
-    // in blocked list.
-    if (!empty($CFG->blockedip)) {
-        if (remoteip_in_list($CFG->blockedip)) {
-            die(get_string('ipblocked', 'admin'));
-        }
+} else if (!empty($CFG->enableipblocker)) {
+    if (empty($CFG->ipblockermessage)) {
+        $ipblockermessage = get_string('ipblocked', 'admin');
+    } else {
+        $ipblockermessage = $CFG->ipblockermessage;
     }
 
-} else {
-    // in this case, IPs in blocked list will be performed first
-    // for example, client IP is 192.168.1.1
-    // 192.168 subnet is an entry in blocked list
-    // 192.168.1.1 is allowed in allowed list
-    // This ip will be allowed finally
-    if (!empty($CFG->blockedip)) {
-        if (remoteip_in_list($CFG->blockedip)) {
-            // if the allowed ip list is not empty
-            // IPs are not included in the allowed list will be
-            // blocked too
-            if (!empty($CFG->allowedip)) {
-                if (!remoteip_in_list($CFG->allowedip)) {
-                    die(get_string('ipblocked', 'admin'));
+    if (!empty($CFG->enableipblockertheme)) {
+        $enabletheme = true;
+    } else {
+        $enabletheme = false;
+    }
+
+    if (!empty($CFG->allowbeforeblock)) {
+        // Allowed list processed before blocked list,
+        // in this case, ip in allowed list will be performed first
+        // for example, client IP is 192.168.1.1
+        // 192.168 subnet is an entry in allowed list
+        // 192.168.1.1 is banned in blocked list
+        // This ip will be banned finally.
+        if (!empty($CFG->allowedip)) {
+            if (!remoteip_in_list($CFG->allowedip)) {
+                print_error_theme($ipblockermessage, $enabletheme);
+            }
+        }
+        // Needs further check, client ip may a part of
+        // allowed subnet, but a IP address are listed
+        // in blocked list.
+        if (!empty($CFG->blockedip)) {
+            if (remoteip_in_list($CFG->blockedip)) {
+                print_error_theme($ipblockermessage, $enabletheme);
+            }
+        }
+
+    } else {
+        // In this case, IPs in blocked list will be performed first
+        // for example, client IP is 192.168.1.1
+        // 192.168 subnet is an entry in blocked list
+        // 192.168.1.1 is allowed in allowed list
+        // This ip will be allowed finally.
+        if (!empty($CFG->blockedip)) {
+            if (remoteip_in_list($CFG->blockedip)) {
+                // If the allowed ip list is not empty
+                // IPs are not included in the allowed list will be
+                // blocked too.
+                if (!empty($CFG->allowedip)) {
+                    if (!remoteip_in_list($CFG->allowedip)) {
+                        print_error_theme($ipblockermessage, $enabletheme);
+                    }
+                } else {
+                    print_error_theme($ipblockermessage, $enabletheme);
                 }
-            } else {
-                die(get_string('ipblocked', 'admin'));
+            }
+        }
+        // If blocked list is null
+        // allowed list should be tested.
+        if (!empty($CFG->allowedip)) {
+            if (!remoteip_in_list($CFG->allowedip)) {
+                print_error_theme($ipblockermessage, $enabletheme);
             }
         }
     }
-    // if blocked list is null
-    // allowed list should be tested
-    if(!empty($CFG->allowedip)) {
-        if (!remoteip_in_list($CFG->allowedip)) {
-            die(get_string('ipblocked', 'admin'));
-        }
-    }
-
 }
 
 // // try to detect IE6 and prevent gzip because it is extremely buggy browser

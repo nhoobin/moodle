@@ -26,6 +26,9 @@
 // comment out when debugging or better look into error log!
 define('NO_DEBUG_DISPLAY', true);
 
+// Disable early rendering to correctly display the IP block page.
+define('NO_IPBLOCK_TEST', true);
+
 define('ABORT_AFTER_CONFIG', true);
 require('../config.php');
 require_once($CFG->dirroot.'/lib/csslib.php');

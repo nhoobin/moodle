@@ -28,6 +28,9 @@ define('NO_DEBUG_DISPLAY', true);
 define('NO_UPGRADE_CHECK', true);
 define('NO_MOODLE_COOKIES', true);
 
+// Disable early rendering to correctly display the IP block page.
+define('NO_IPBLOCK_TEST', true);
+
 require('../config.php');
 require_once($CFG->dirroot.'/lib/csslib.php');
 

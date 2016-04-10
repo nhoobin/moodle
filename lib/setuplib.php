@@ -496,6 +496,30 @@ function print_error($errorcode, $module = 'error', $link = '', $a = null, $debu
 }
 
 /**
+ * This function provides a themed error message. This is used primarily with the
+ * IP blocker.
+ *
+ * @param string $errorstring The error message that will be printed to a user that has
+ *      been IP blocked.
+ * @param boolean $theme If the error message will be encapsulated around the theme.
+ */
+function print_error_theme($errorstring, $theme = false) {
+    global $PAGE, $OUTPUT;
+
+    if ($theme === true) {
+        $PAGE->set_context(context_system::instance());
+        $PAGE->set_url($_SERVER['REQUEST_URI']);
+        $PAGE->set_title(get_string('accessdenied', 'admin'));
+        echo $OUTPUT->header();
+        echo $OUTPUT->box($errorstring);
+        echo $OUTPUT->footer();
+        die();
+    } else {
+        die($errorstring);
+    }
+}
+
+/**
  * Returns detailed information about specified exception.
  * @param exception $ex
  * @return object
