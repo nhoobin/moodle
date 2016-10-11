@@ -389,7 +389,7 @@ class assign_submission_onlinetext extends assign_submission_plugin {
         $onlinetextsubmission = $this->get_onlinetext_submission($submission->id);
 
         if ($onlinetextsubmission) {
-            $finaltext = $this->assignment->download_rewrite_pluginfile_urls($onlinetextsubmission->onlinetext, $user, $this);
+            $finaltext = $this->assignment->download_rewrite_pluginfile_urls($onlinetextsubmission->onlinetext);
             $formattedtext = format_text($finaltext,
                                          $onlinetextsubmission->onlineformat,
                                          array('context'=>$this->assignment->get_context()));

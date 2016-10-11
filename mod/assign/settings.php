@@ -279,6 +279,18 @@ if ($ADMIN->fulltree) {
     $setting->set_advanced_flag_options(admin_setting_flag::ENABLED, false);
     $setting->set_locked_flag_options(admin_setting_flag::ENABLED, false);
     $settings->add($setting);
+
+    $name = new lang_string('submissionprefix', 'mod_assign');
+    $description = new lang_string('submissionprefix_help', 'mod_assign');
+    $default = '{{groupname}}-{{fullname}}';
+    $setting = new admin_setting_configtext('assign/submissionprefix',
+                                                $name,
+                                                $description,
+                                                $default,
+                                                PARAM_TEXT);
+    $setting->set_advanced_flag_options(admin_setting_flag::ENABLED, false);
+    $setting->set_locked_flag_options(admin_setting_flag::ENABLED, false);
+    $settings->add($setting);
 }
 
 $ADMIN->add('modassignfolder', $settings);

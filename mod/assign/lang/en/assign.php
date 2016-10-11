@@ -403,6 +403,8 @@ $string['submissionnotcopiedinvalidstatus'] = 'The submission was not copied bec
 $string['submissionnoteditable'] = 'Student cannot edit this submission';
 $string['submissionnotready'] = 'This assignment is not ready to submit:';
 $string['submissionplugins'] = 'Submission plugins';
+$string['submissionprefix'] = 'Download submission folder name prefix';
+$string['submissionprefix_help'] = 'The following template items exist:<ul><li>{{idnumber}} The user idnumber field of the submissions user.</li><li>{{username}} The username of the submissions user.</li><li>{{userid}} The internal id number of the submissions user.</li><li>{{fullname}} The full name of the submissions user.</li><li>{{groupname}} The group that the submitting user belongs to.</li><li>{{course}} The course shortname that is associated with the submission.</li><li>{{submissioncreated}} The date of the initial submission.</li><li>{{submissionmodified}} The date of the submission after a modification.</li><li>{{assignmentname}} The name of the assignment.</li><li>{{attemptnumber}} The number of submitted attempts.</li><li>{{profilexxxx}} Where xxxx is the shortname of a user custom profile field. If the custom profile field does not exist, the token will be stripped from this template when processing the folder name.</li></ul>{{username}} and {{idnumber}} respect the value of $CFG->showuseridentity.';
 $string['submissionreceipts'] = 'Send submission receipts';
 $string['submissionreceiptothertext'] = 'Your assignment submission for
 \'{$a->assignment}\' has been submitted.

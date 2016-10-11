@@ -59,32 +59,45 @@ class assignfeedback_file_zip_importer {
             return false;
         }
 
-        $info = explode('_', $fileinfo->get_filepath() . $fileinfo->get_filename(), 5);
+        $filename = $fileinfo->get_filename();
 
-        if (count($info) < 5) {
+        // The filepath of an imported zip will be /import/$template/ so we trim the slashes.
+        $filepath = trim($fileinfo->get_filepath(), DIRECTORY_SEPARATOR);
+
+        // Explode on the dir separator. Grab the zip file directory after import/.
+        $foldername = explode('/', $filepath)[1];
+
+        $data = $assignment->decompose_student_foldername($foldername);
+
+        if ($data === false) {
             return false;
         }
 
-        $participantid = $info[1];
-        $filename = $info[4];
-        $plugin = $assignment->get_plugin_by_type($info[2], $info[3]);
-
-        if (!is_numeric($participantid)) {
+        if (empty($data->subtype)) {
             return false;
         }
 
+        if (empty($data->type)) {
+            return false;
+        }
+
+        if (!is_numeric($data->participantid)) {
+            return false;
+        }
+
+        $plugin = $assignment->get_plugin_by_type($data->subtype, $data->type);
         if (!$plugin) {
             return false;
         }
 
         // Convert to int.
-        $participantid += 0;
+        $data->participantid += 0;
 
-        if (empty($participants[$participantid])) {
+        if (empty($participants[$data->participantid])) {
             return false;
         }
 
-        $user = $participants[$participantid];
+        $user = $participants[$data->participantid];
         return true;
     }
 

@@ -102,6 +102,12 @@ class mod_assign_mod_form extends moodleform_mod {
 
         $assignment->add_all_plugin_settings($mform);
 
+        $mform->addElement('header', 'submissionprefixsettings', 'Submission folder prefix');
+        $name = get_string('submissionprefix', 'assign');
+        $mform->addElement('text', 'submissionprefix', $name, array('size'=>'64'));
+        $mform->addHelpButton('submissionprefix', 'submissionprefix', 'assign');
+        $mform->setType('submissionprefix', PARAM_TEXT);
+
         $mform->addElement('header', 'submissionsettings', get_string('submissionsettings', 'assign'));
 
         $name = get_string('submissiondrafts', 'assign');
