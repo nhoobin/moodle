@@ -543,7 +543,8 @@ class core_session_manager_testcase extends advanced_testcase {
         \core\session\manager::gc();
 
         $this->assertTrue($DB->record_exists('sessions', array('id'=>$r1)));
-        $this->assertFalse($DB->record_exists('sessions', array('id'=>$r2)));
+        // $r2->timemodified = time() - 60 * 20. manual auth, session not deleted.
+        $this->assertTrue($DB->record_exists('sessions', array('id'=>$r2)));
         $this->assertTrue($DB->record_exists('sessions', array('id'=>$r3)));
         $this->assertFalse($DB->record_exists('sessions', array('id'=>$r4)));
         $this->assertFalse($DB->record_exists('sessions', array('id'=>$r5)));

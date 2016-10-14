@@ -250,6 +250,32 @@ class auth_plugin_manual extends auth_plugin_base {
         }
     }
 
+    /**
+     * Checks the $user objects authtype and returns true to prevent session timeouts.
+     * If the session has not been modified for a week then it will return false.
+     *
+     * @param object $user
+     * @param string $sid
+     * @param int $timecreated
+     * @param int $timemodified
+     * @return bool
+     */
+    public function ignore_timeout_hook($user, $sid, $timecreated, $timemodified) {
+
+        // All sessions greater than one week will be pruned.
+        $diff = time() - $timemodified;
+        $week = 60 * 60 * 24 * 7;
+        if ($diff > $week) {
+            return false;
+        }
+
+        if ($user->auth == $this->authtype) {
+            return true;
+        }
+
+        return false;
+    }
+
 }
 
 
