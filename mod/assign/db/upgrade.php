@@ -233,5 +233,30 @@ function xmldb_assign_upgrade($oldversion) {
     // Automatically generated Moodle v3.2.0 release upgrade line.
     // Put any upgrade step following this.
 
+    if ($oldversion < 2016121201) {
+
+        // Define field submissionprefix to be added to assign_plugin_config.
+        $table = new xmldb_table('assign');
+        $field = new xmldb_field('submissionprefix', XMLDB_TYPE_TEXT, null, null, null, null, null, 'value');
+
+        // Conditionally launch add field submissionprefix.
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Sets the default prefix value.
+        set_config('submissionprefix', '{{groupname}}-{{fullname}}', 'assign');
+
+        // Sets the default prefix value for all existing assignments.
+        $records = $DB->get_records('assign');
+        foreach ($records as $record) {
+            $record->submissionprefix = '{{groupname}}-{{fullname}}';
+            $DB->update_record('assign', $record);
+        }
+
+        // Assign savepoint reached.
+        upgrade_mod_savepoint(true, 2016121201, 'assign');
+    }
+
     return true;
 }

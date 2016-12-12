@@ -2819,4 +2819,413 @@ Anchor link 2:<a title=\"bananas\" href=\"../logo-240x60.gif\">Link text</a>
         $completiondata = $completion->get_data($cm, false, $student2->id);
         $this->assertEquals(1, $completiondata->completionstate);
     }
+
+    /**
+     * Test test_compose_student_foldername_tokens.
+     */
+    public function test_compose_student_foldername_tokens() {
+        global $CFG;
+
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $instance = $assign->get_instance();
+        $CFG->showuseridentity = 'idnumber,username';
+
+        $student = $this->students[0];
+        $student->firstname = 'Test';
+        $student->lastname = 'User';
+        $student->username = 'username';
+        $groupname = 'Groupname Token';
+
+        $this->setUser($student);
+        // Simulate a submission.
+        $data = new stdClass();
+        $data->onlinetext_editor = array(
+            'itemid' => file_get_unused_draft_itemid(),
+            'text'   => 'Student submission text',
+            'format' => FORMAT_MOODLE
+        );
+
+        $notices = array();
+        $assign->save_submission($data, $notices);
+
+        $plugin = $assign->get_submission_plugin_by_type('onlinetext');
+
+        // Convert the template.
+        $submission = $assign->get_user_submission($student->id, true);
+
+        // User tokens.
+        $usertokens = array(
+            '{{groupname}}' => $groupname,
+            '{{fullname}}' => str_replace('_', ' ', fullname($student)),
+            '{{username}}' => $student->username,
+            '{{idnumber}}' => $student->idnumber,
+            '{{userid}}' => $student->id,
+            '{{course}}' => $this->course->shortname,
+            '{{submissioncreated}}' => userdate($submission->timecreated, '%Y-%m-%d_%H-%M-%S'),
+            '{{submissionmodified}}' => userdate($submission->timemodified, '%Y-%m-%d_%H-%M-%S'),
+        );
+
+        // Template: '{{fullname}} {{username}} {{idnumber}} {{userid}} {{course}} {{submissioncreated}} {{submisisonmodified}}'.
+        $template = implode(' ', array_keys($usertokens));
+        $instance->submissionprefix = $template;
+
+        $output = $assign->compose_student_foldername($groupname, $student, $plugin);
+
+        // Creating the suffix data due to the unique id changing for unit tests.
+        $suffix = $this->generate_download_folder_suffix($assign, $student, $plugin);
+        $expected = implode(' ', array_values($usertokens)) . $suffix;
+
+        $this->assertEquals($expected, $output);
+    }
+
+    /**
+     * Test test_compose_student_foldername_identityfields.
+     *
+     * @dataProvider get_compose_student_foldername_identityfields
+     * @param string $fields
+     * @param string $template
+     * @param string $expected
+     */
+    public function test_compose_student_foldername_identityfields($fields, $template, $expected) {
+        global $CFG;
+
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $instance = $assign->get_instance();
+        $instance->submissionprefix = $template;
+
+        $CFG->showuseridentity = $fields;
+
+        $student = $this->students[0];
+        $student->firstname = 'Test';
+        $student->lastname = 'User';
+        $student->username = 'usernametest';
+        $student->idnumber = 'idnumbertest';
+
+        $this->setUser($student);
+
+        // Simulate a submission.
+        $data = new stdClass();
+        $data->onlinetext_editor = array(
+            'itemid' => file_get_unused_draft_itemid(),
+            'text'   => 'Student submission text',
+            'format' => FORMAT_MOODLE
+        );
+
+        $notices = array();
+        $assign->save_submission($data, $notices);
+
+        $plugin = $assign->get_submission_plugin_by_type('onlinetext');
+
+        // Convert the template.
+        $submission = $assign->get_user_submission($student->id, true);
+        $output = $assign->compose_student_foldername('', $student, $plugin);
+
+        // Creating the suffix data due to the unique id changing for unit tests.
+        $suffix = $this->generate_download_folder_suffix($assign, $student, $plugin);
+
+        $this->assertEquals($expected . $suffix, $output);
+
+    }
+
+    /**
+     * Data provider for test_compose_student_foldername
+     *
+     * @return array Provider data
+     */
+    public function get_compose_student_foldername_identityfields() {
+        return array(
+            array('username,idnumber', '{{username}} {{idnumber}}', 'usernametest idnumbertest'),
+            array('idnumber', '{{username}} {{idnumber}}', ' idnumbertest'),
+            array('username', '{{username}} {{idnumber}}', 'usernametest '),
+            array('', '{{username}} {{idnumber}}', ' '),
+        );
+    }
+
+    /**
+     * Test test_compose_student_foldername template generation.
+     *
+     * @dataProvider get_compose_student_foldername
+     * @param string $template
+     * @param string $groupname
+     * @param string $expected
+     */
+    public function test_compose_student_foldername($template, $groupname, $expected) {
+        global $CFG;
+
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $instance = $assign->get_instance();
+        $instance->submissionprefix = $template;
+        $CFG->showuseridentity = 'idnumber,username';
+
+        $student = $this->students[0];
+        $student->firstname = 'Test';
+        $student->lastname = 'User';
+        $student->username = 'username';
+
+        $this->setUser($student);
+
+        // Simulate a submission.
+        $data = new stdClass();
+        $data->onlinetext_editor = array(
+            'itemid' => file_get_unused_draft_itemid(),
+            'text'   => 'Student submission text',
+            'format' => FORMAT_MOODLE
+        );
+
+        $notices = array();
+        $assign->save_submission($data, $notices);
+
+        $plugin = $assign->get_submission_plugin_by_type('onlinetext');
+
+        // Convert the template.
+        $submission = $assign->get_user_submission($student->id, true);
+        $output = $assign->compose_student_foldername($groupname, $student, $plugin, $submission);
+
+        // Creating the suffix data due to the unique id changing for unit tests.
+        $suffix = $this->generate_download_folder_suffix($assign, $student, $plugin);
+
+        $this->assertEquals($expected . $suffix, $output);
+    }
+
+    /**
+     * Data provider for test_compose_student_foldername
+     *
+     * @return array Provider data
+     */
+    public function get_compose_student_foldername() {
+        return array(
+            array('{{groupname}}-{{fullname}}', 'Group A', 'Group A-Test User'),
+            array(' {{groupname}} {{fullname}}', 'Group A', ' Group A Test User'),
+            array('{{groupname}}{{fullname}}', 'Group B', 'Group BTest User'),
+            array('_{{groupname}}_{{fullname}}', 'Computer Science Group 2', '_Computer Science Group 2_Test User'),
+            array('{{fullname}} {{groupname}}{{groupname}}', 'Group Z', 'Test User Group ZGroup Z'),
+            array('{{fullname}}{{groupname}}-{{username}}', '1234567890', 'Test User1234567890-username'),
+            array('{{fullname}}_{{groupname}}', 'Group Z', 'Test User_Group Z'),
+            array('{{username}}_{{groupname}}', '<<><<!@<>#$>>', 'username_!@#$'), // Clean filename strips <> characters.
+            array('{{groupname}}-{{fullname}}', '', 'Test User'),
+            array(' {{groupname}} {{fullname}}', '', 'Test User'),
+            array('{{groupname}}{{fullname}}', '', 'Test User'),
+            array('_{{groupname}}_{{fullname}}', '', 'Test User'),
+            array('{{fullname}} {{groupname}}', '', 'Test User'),
+            array('{{fullname}}', '', 'Test User'),
+            array('{{username}}', '', 'username'),
+            array('{{fullname}}      {{username}}', '', 'Test User      username'),
+        );
+    }
+
+    /**
+     * Test test_compose_student_foldername_profilefields template generation.
+     */
+    public function test_compose_student_foldername_profilefields() {
+        global $DB, $CFG;
+
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $instance = $assign->get_instance();
+        $CFG->showuseridentity = 'idnumber,username';
+
+        // The template has uniqueid and a custom user profile field 'test'.
+        $template = '{{groupname}}-{{fullname}}_{{profiletest}}';
+        $instance->submissionprefix = $template;
+
+        $student = $this->students[0];
+        $this->setUser($student);
+
+        // Simulate a submission.
+        $data = new stdClass();
+        $data->onlinetext_editor = array(
+            'itemid' => file_get_unused_draft_itemid(),
+            'text'   => 'Student submission text',
+            'format' => FORMAT_MOODLE
+        );
+
+        // Add a custom profile field named 'test'.
+        $pid = $DB->insert_record('user_info_field', array(
+            'shortname'  => 'test',
+            'name'       => 'Test Field',
+            'categoryid' => 1,
+            'datatype'   => 'text'));
+
+        // Check both are returned using normal option.
+        $fields = profile_get_custom_fields();
+        $this->assertArrayHasKey($pid, $fields);
+        $this->assertEquals('test', $fields[$pid]->shortname);
+
+        // Add text data to the custom profile field 'test'.
+        $fielddata = 'TEST_DATA_FOR_PROFILE_FIELD';
+        $did = $DB->insert_record('user_info_data', array(
+            'userid'  => $student->id,
+            'fieldid' => $fields[$pid]->id,
+            'data'    => $fielddata));
+
+        $notices = array();
+        $assign->save_submission($data, $notices);
+        $submission = $assign->get_user_submission($student->id, true);
+
+        $plugin = $assign->get_submission_plugin_by_type('onlinetext');
+
+        // Convert the template.
+        $submission = $assign->get_user_submission($student->id, true);
+        $output = $assign->compose_student_foldername('', $student, $plugin, $submission);
+
+        // Creating the suffix data due to the unique id changing for unit tests.
+        $suffix = $this->generate_download_folder_suffix($assign, $student, $plugin);
+
+        // Generate the result.
+        $expected = str_replace('_', ' ', fullname($student)) . '_' . $fielddata . $suffix;
+
+        $this->assertEquals($expected, $output);
+    }
+
+    /**
+     * Test test_compose_student_foldername_profilefields_missing template generation.
+     */
+    public function test_compose_student_foldername_profilefields_missing() {
+        global $CFG;
+
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $instance = $assign->get_instance();
+        $CFG->showuseridentity = 'idnumber,username';
+
+        // The template has uniqueid and a custom user profile field 'test'.
+        $template = '{{groupname}}-{{fullname}}{{profiletest444}}{{profiletest}}{{profiletest2}}{{profiletest3}}';
+        $instance->submissionprefix = $template;
+
+        $student = $this->students[0];
+        $this->setUser($student);
+
+        // Simulate a submission.
+        $data = new stdClass();
+        $data->onlinetext_editor = array(
+            'itemid' => file_get_unused_draft_itemid(),
+            'text'   => 'Student submission text',
+            'format' => FORMAT_MOODLE
+        );
+
+        $notices = array();
+        $assign->save_submission($data, $notices);
+
+        $plugin = $assign->get_submission_plugin_by_type('onlinetext');
+
+        // Convert the template.
+        $submission = $assign->get_user_submission($student->id, true);
+        $output = $assign->compose_student_foldername('', $student, $plugin, $submission);
+
+        // Creating the suffix data due to the unique id changing for unit tests.
+        $suffix = $this->generate_download_folder_suffix($assign, $student, $plugin);
+
+        // The {{profilexxxx}} tokens will be stripped.
+        $expected = str_replace('_', ' ', fullname($student)) . $suffix;
+
+        $this->assertEquals($expected, $output);
+    }
+
+    /**
+     * Test test_decompose_student_foldername
+     *
+     * @dataProvider get_decompose_student_foldername
+     * @param string $folder
+     * @param string $file
+     * @param array $data
+     */
+    public function test_decompose_student_foldername($folder, $file, $data) {
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $output = $assign->decompose_student_foldername($folder, $file);
+
+        $this->assertEquals($data[0], $output->participantid);
+        $this->assertEquals($data[1], $output->subtype);
+        $this->assertEquals($data[2], $output->type);
+        $this->assertEquals($data[3], $output->filename);
+    }
+
+    /**
+     * Data provider for test_decompose_student_foldername
+     *
+     * @return array Provider data
+     */
+    public function get_decompose_student_foldername() {
+        return array(
+            array('/import/_participantid_subtype_type_/Folder/', 'donut_example.c',
+                array('participantid', 'subtype', 'type', '/Folder/donut_example.c')),
+            array('/import/example data_with___afew_____1_assignsubmission_file_/', 'local.xml',
+                array('1', 'assignsubmission', 'file', '/local.xml')),
+            array('/import/a few tokens {{and}} !@$!@% in_2_assignsubmission_onlinetext_/', 'onlinetext.html',
+                array('2', 'assignsubmission', 'onlinetext', '/onlinetext.html')),
+        );
+    }
+
+    /**
+     * Test test_decompose_student_foldername_previous
+     *
+     * @dataProvider get_decompose_student_foldername_previous
+     * @param string $folder
+     * @param string $file
+     * @param array $data
+     */
+    public function test_decompose_student_foldername_previous($folder, $file, $data) {
+        $this->resetAfterTest(true);
+
+        $assign = $this->create_instance();
+        $output = $assign->decompose_student_foldername($folder, $file);
+
+        $this->assertEquals($data[0], $output->participantid);
+        $this->assertEquals($data[1], $output->subtype);
+        $this->assertEquals($data[2], $output->type);
+        $this->assertEquals($data[3], $output->filename);
+    }
+
+    /**
+     * Data provider for test_decompose_student_foldername
+     *
+     * @return array Provider data
+     */
+    public function get_decompose_student_foldername_previous() {
+        return array(
+            array('/import/', 'Admin User_2_assignsubmission_file_donut.c',
+                array('2', 'assignsubmission', 'file', '/donut.c')),
+            array('/import/', 'Admin User_2_assignsubmission_onlinetext_onlinetext.html',
+                array('2', 'assignsubmission', 'onlinetext', '/onlinetext.html')),
+        );
+    }
+
+    /**
+     * Test test_decompose_student_foldername_failure
+     */
+    public function test_decompose_student_foldername_failure() {
+        $this->resetAfterTest(true);
+
+        $folder = '/import/';
+        $file = 'failure';
+
+        $assign = $this->create_instance();
+        $output = $assign->decompose_student_foldername($folder, $file);
+
+        $this->assertEquals(false, $output);
+    }
+
+    /**
+     * Helper function to generate the suffix that contains a unique submission id, plugin subtype and plugin type.
+     *
+     * @param assign $assign
+     * @param stdClass $user
+     * @param assign_plugin $plugin
+     * @return string
+     */
+    public function generate_download_folder_suffix($assign, $user, $plugin) {
+        $uniqueid = $assign->get_uniqueid_for_user($user->id);
+        $suffix = '_' . $uniqueid . '_' . $plugin->get_subtype() . '_' . $plugin->get_type() . '_';
+
+        return $suffix;
+    }
 }

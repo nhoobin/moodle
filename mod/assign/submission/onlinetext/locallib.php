@@ -386,6 +386,7 @@ class assign_submission_onlinetext extends assign_submission_plugin {
         global $DB;
 
         $files = array();
+        $submission = $this->assignment->get_user_submission($user->id, false);
         $onlinetextsubmission = $this->get_onlinetext_submission($submission->id);
 
         if ($onlinetextsubmission) {
@@ -396,7 +397,7 @@ class assign_submission_onlinetext extends assign_submission_plugin {
             $head = '<head><meta charset="UTF-8"></head>';
             $submissioncontent = '<!DOCTYPE html><html>' . $head . '<body>'. $formattedtext . '</body></html>';
 
-            $filename = get_string('onlinetextfilename', 'assignsubmission_onlinetext');
+            $filename = DIRECTORY_SEPARATOR . get_string('onlinetextfilename', 'assignsubmission_onlinetext');
             $files[$filename] = array($submissioncontent);
 
             $fs = get_file_storage();
@@ -409,7 +410,7 @@ class assign_submission_onlinetext extends assign_submission_plugin {
                                            false);
 
             foreach ($fsfiles as $file) {
-                $files[$file->get_filename()] = $file;
+                $files[DIRECTORY_SEPARATOR . $file->get_filename()] = $file;
             }
         }
 

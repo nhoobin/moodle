@@ -59,15 +59,15 @@ class assignfeedback_file_zip_importer {
             return false;
         }
 
-        $info = explode('_', $fileinfo->get_filepath() . $fileinfo->get_filename(), 5);
+        $data = $assignment->decompose_student_foldername($fileinfo->get_filepath(), $fileinfo->get_filename());
 
-        if (count($info) < 5) {
+        if (empty($data)) {
             return false;
         }
 
-        $participantid = $info[1];
-        $filename = $info[4];
-        $plugin = $assignment->get_plugin_by_type($info[2], $info[3]);
+        $participantid = $data->participantid;
+        $filename = $data->filename;
+        $plugin = $assignment->get_plugin_by_type($data->subtype, $data->type);
 
         if (!is_numeric($participantid)) {
             return false;

@@ -79,6 +79,7 @@ require_once($CFG->dirroot . '/mod/assign/renderable.php');
 require_once($CFG->dirroot . '/mod/assign/gradingtable.php');
 require_once($CFG->libdir . '/eventslib.php');
 require_once($CFG->libdir . '/portfolio/caller.php');
+require_once($CFG->dirroot . '/user/profile/lib.php');
 
 use \mod_assign\output\grading_app;
 
@@ -657,6 +658,10 @@ class assign {
         $update->markingallocation = $formdata->markingallocation;
         if (empty($update->markingworkflow)) { // If marking workflow is disabled, make sure allocation is disabled.
             $update->markingallocation = 0;
+        }
+
+        if (!empty($formdata->submissionprefix)) {
+            $update->submissionprefix = $formdata->submissionprefix;
         }
 
         $returnid = $DB->insert_record('assign', $update);
@@ -1260,6 +1265,8 @@ class assign {
         if (empty($update->markingworkflow)) { // If marking workflow is disabled, make sure allocation is disabled.
             $update->markingallocation = 0;
         }
+
+        $update->submissionprefix = $formdata->submissionprefix;
 
         $result = $DB->update_record('assign', $update);
         $this->instance = $DB->get_record('assign', array('id'=>$update->id), '*', MUST_EXIST);
@@ -2889,30 +2896,26 @@ class assign {
      * @param string $text - The replacement text
      * @param stdClass $user - The user record
      * @param assign_plugin $plugin - The assignment plugin
+     * @return string
      */
     public function download_rewrite_pluginfile_urls($text, $user, $plugin) {
-        $groupmode = groups_get_activity_groupmode($this->get_course_module());
-        $groupname = '';
-        if ($groupmode) {
-            $groupid = groups_get_activity_group($this->get_course_module(), true);
-            $groupname = groups_get_group_name($groupid).'-';
-        }
+        $downloadasfolders = get_user_preferences('assign_downloadasfolders', 1);
 
-        if ($this->is_blind_marking()) {
-            $prefix = $groupname . get_string('participant', 'assign');
-            $prefix = str_replace('_', ' ', $prefix);
-            $prefix = clean_filename($prefix . '_' . $this->get_uniqueid_for_user($user->id) . '_');
+        if ($downloadasfolders) {
+            $result = str_replace('@@PLUGINFILE@@/', '', $text);
+
         } else {
-            $prefix = $groupname . fullname($user);
-            $prefix = str_replace('_', ' ', $prefix);
-            $prefix = clean_filename($prefix . '_' . $this->get_uniqueid_for_user($user->id) . '_');
+            $groupmode = groups_get_activity_groupmode($this->get_course_module());
+            $groupname = '';
+            if ($groupmode) {
+                $groupid = groups_get_activity_group($this->get_course_module(), true);
+                $groupname = groups_get_group_name($groupid);
+            }
+
+            $prefix = $this->compose_student_foldername($groupname, $user, $plugin);
+
+            $result = str_replace('@@PLUGINFILE@@/', $prefix, $text);
         }
-
-        $subtype = $plugin->get_subtype();
-        $type = $plugin->get_type();
-        $prefix = $prefix . $subtype . '_' . $type . '_';
-
-        $result = str_replace('@@PLUGINFILE@@/', $prefix, $text);
 
         return $result;
     }
@@ -3084,6 +3087,202 @@ class assign {
     }
 
     /**
+     * This returns the default template that is used with the folder name when downloading assignments.
+     *
+     * @return string
+     */
+    public function get_submission_template() {
+        $adminconfig = $this->get_admin_config();
+
+        if (empty($this->get_instance()->submissionprefix)) {
+
+            // There is no defined submission prefix default.
+            if (empty($adminconfig->submissionprefix)) {
+                // Force the default template.
+                $prefix = '{{groupname}}-{{fullname}}';
+            } else {
+                $prefix = $adminconfig->submissionprefix;
+            }
+
+        } else {
+            $prefix = $this->get_instance()->submissionprefix;
+        }
+
+        return $prefix;
+    }
+
+    /**
+     * The suffix is required for importing zip feedback, this determines which plugin the content will be imported to.
+     *
+     * @return string
+     */
+    public static function get_submission_suffix() {
+        $suffix = '_{{uniqueid}}_{{subtype}}_{{type}}_';
+        return $suffix;
+    }
+
+    /**
+     * This will generate the user folder name when batch downloading submissions in a zip.
+     * The user submissions will be inside the folder name.
+     *
+     * @param string $groupname - The group name
+     * @param stdClass $user - The user record
+     * @param assign_plugin $plugin - The assignment plugin
+     * @return string
+     */
+    public function compose_student_foldername($groupname, $user, $plugin) {
+        global $CFG;
+
+        // We start with obtaining the prefix.
+        $template = $this->get_submission_template();
+        $submission = $this->get_user_submission($user->id, false);
+
+        // If the groupname has not been set then remove surrounding whitespace and -, _ characters.
+        if (empty($groupname)) {
+            $re = "
+            /
+            ^[\\s-_]?      # Match the beginning of string starting the characters - _ or a space. (Optional)
+            {{groupname}}  # Followed by {{groupname}}
+            [\\s-_]?       # Followed by either the characters - _ or a space. (Optional)
+            |              # OR
+            {{groupname}}  # Somewhere in the middle of the string, match {{groupname}}
+            [\\s-_]?       # Followed by either the characters - _ or a space. (Optional)
+            |              # OR
+            [\\s-_]?       # Match the characters - _ or a space. (Optional)
+            {{groupname}}$ # When the string ends with {{groupname}}
+            /ix";          // Case insensitive, PCRE_EXTENDED.
+            $template = preg_replace($re, "", $template);
+        }
+
+        // After cleaning the {{groupname}} token, we will add the hard coded suffix.
+        $template = $template . assign::get_submission_suffix();
+
+        // The template variable map.
+        $vars = array(
+            '/{{uniqueid}}/'           => $this->get_uniqueid_for_user($user->id), // Suffix variable.
+            '/{{subtype}}/'            => $plugin->get_subtype(),                  // Suffix variable.
+            '/{{type}}/'               => $plugin->get_type(),                     // Suffix variable.
+            '/{{groupname}}/'          => str_replace('_', ' ', $groupname),
+            '/{{fullname}}/'           => str_replace('_', ' ', fullname($user)),
+            '/{{username}}/'           => $user->username,
+            '/{{idnumber}}/'           => $user->idnumber,
+            '/{{userid}}/'             => $user->id,
+            '/{{course}}/'             => $this->get_course()->shortname,
+            '/{{assignmentname}}/'     => $this->get_instance()->name,
+            '/{{attemptnumber}}/'      => $submission->attemptnumber,
+            '/{{submissioncreated}}/'  => userdate($submission->timecreated, '%Y-%m-%d_%H-%M-%S'),
+            '/{{submissionmodified}}/' => userdate($submission->timemodified, '%Y-%m-%d_%H-%M-%S'),
+        );
+
+        // Obtain the custom user profile fields and add them as template variables.
+        profile_load_custom_fields($user);
+        foreach ($user->profile as $customfield => $data) {
+            $re = '/{{profile' . $customfield . '}}/';
+            $vars[$re] = clean_text($data);
+        }
+
+        // Parse the custom profile fields from the template.
+        $re = "/{{profile([[:alnum:]]*)}}/i";
+        if (preg_match_all($re, $template, $matches)) {
+            foreach ($matches[1] as $match) {
+                if (!array_key_exists($match, $user->profile)) {
+                    // Clean the {{profilexxxx}} from the template, if it is not present.
+                    $pattern = '/{{profile' . $match . '}}/';
+                    $template = preg_replace($pattern, '', $template);
+                }
+            }
+        }
+
+        // Remove sensitive student information during blind marking.
+        $participant = get_string('participant', 'assign');
+        if ($this->is_blind_marking()) {
+            $vars['/{{fullname}}/'] = $participant;
+            $vars['/{{idnumber}}/'] = $participant;
+            $vars['/{{username}}/'] = $participant;
+            $vars['/{{userid}}/']   = $participant;
+        }
+
+        // Protect sensitive student information that has not been enabled with the user policy $CFG->showuseridentity.
+        $showuseridentityfields = explode(',', $CFG->showuseridentity);
+        $protectedidentityfields = array(
+            '/{{idnumber}}/' => 'idnumber',
+            '/{{username}}/' => 'username',
+        );
+
+        // This will remove each token from the directory path.
+        foreach ($protectedidentityfields as $key => $field) {
+            if (!in_array($field, $showuseridentityfields)) {
+                $vars[$key] = '';
+            }
+        }
+
+        // Perform the template replacement.
+        $patterns = array_keys($vars);
+        $replacements = array_values($vars);
+        $prefix = preg_replace($patterns, $replacements, $template);
+
+        // Clean the output when returning the folder name.
+        return clean_filename($prefix);
+    }
+
+    /**
+     * Parses an assignment submission foldername.
+     * The stdClass return has the attributes: filename, participantid, subtype and type.
+     * These attributes help to determine the submission plugin that was used when importing feedback.
+     *
+     * @param string $filepath
+     * @param string $filename
+     * @return bool|stdClass
+     */
+    public function decompose_student_foldername($filepath, $filename) {
+        $data = new stdClass();
+
+        $pathinfo = explode(DIRECTORY_SEPARATOR, $filepath, 4);
+
+        if (count($pathinfo) == 4) {
+            // Example path: /import/username_3_assignsubmission_file_/directory/.
+            // Example filename: donut.c.
+
+            // Obtain the template string.
+            $directory = $pathinfo[2];
+
+            // When there is a path present, $pathinfo[3] is the remainder of the import path.
+            $data->filename = DIRECTORY_SEPARATOR . $pathinfo[3] . $filename;
+        } else {
+            // Example path: /import/
+            // Example filename: username_3_assignsubmission_file_donut_extra_underscore.c.
+            $re = '/_\d+_[[:alpha:]]+_[[:alpha:]]+_/';
+            preg_match($re, $filename, $matches);
+            if (empty($matches)) {
+                return false;
+            }
+
+            // Obtain the template string.
+            $directory = $matches[0];
+
+            // Explode on the matched string.
+            $importfilename = explode($directory, $filename);
+
+            $data->filename = DIRECTORY_SEPARATOR . $importfilename[count($importfilename) - 1];
+        }
+
+        // Explode on the token separator that we use in the template for the suffix.
+        $details = explode('_', $directory);
+
+        // The hard coded suffix eg. '_3_assignsubmission_type_' will explode to be 5 elements.
+        $elements = count($details);
+        if ($elements < 5) {
+            return false;
+        }
+
+        $data->participantid = $details[$elements - 4];
+        $data->subtype       = $details[$elements - 3];
+        $data->type          = $details[$elements - 2];
+
+        return $data;
+    }
+
+    /**
      * Download a zip file of all assignment submissions.
      *
      * @param array $userids Array of user ids to download assignment submissions in a zip file
@@ -3139,47 +3338,37 @@ class assign {
                     $submission = $this->get_group_submission($userid, 0, false);
                     $submissiongroup = $this->get_submission_group($userid);
                     if ($submissiongroup) {
-                        $groupname = $submissiongroup->name . '-';
+                        $groupname = $submissiongroup->name;
                     } else {
-                        $groupname = get_string('defaultteam', 'assign') . '-';
+                        $groupname = get_string('defaultteam', 'assign');
                     }
                 } else {
                     $submission = $this->get_user_submission($userid, false);
-                }
-
-                if ($this->is_blind_marking()) {
-                    $prefix = str_replace('_', ' ', $groupname . get_string('participant', 'assign'));
-                    $prefix = clean_filename($prefix . '_' . $this->get_uniqueid_for_user($userid));
-                } else {
-                    $prefix = str_replace('_', ' ', $groupname . fullname($student));
-                    $prefix = clean_filename($prefix . '_' . $this->get_uniqueid_for_user($userid));
                 }
 
                 if ($submission) {
                     $downloadasfolders = get_user_preferences('assign_downloadasfolders', 1);
                     foreach ($this->submissionplugins as $plugin) {
                         if ($plugin->is_enabled() && $plugin->is_visible()) {
+
+                            $prefixedfolder =  $this->compose_student_foldername($groupname, $student, $plugin);
+
                             if ($downloadasfolders) {
                                 // Create a folder for each user for each assignment plugin.
                                 // This is the default behavior for version of Moodle >= 3.1.
                                 $submission->exportfullpath = true;
                                 $pluginfiles = $plugin->get_files($submission, $student);
+
                                 foreach ($pluginfiles as $zipfilepath => $file) {
-                                    $subtype = $plugin->get_subtype();
                                     $type = $plugin->get_type();
                                     $zipfilename = basename($zipfilepath);
-                                    $prefixedfilename = clean_filename($prefix .
-                                                                       '_' .
-                                                                       $subtype .
-                                                                       '_' .
-                                                                       $type .
-                                                                       '_');
+
                                     if ($type == 'file') {
-                                        $pathfilename = $prefixedfilename . $file->get_filepath() . $zipfilename;
+                                        $pathfilename = $prefixedfolder . $file->get_filepath() . $zipfilename;
                                     } else if ($type == 'onlinetext') {
-                                        $pathfilename = $prefixedfilename . '/' . $zipfilename;
+                                        $pathfilename = $prefixedfolder . '/' . $zipfilename;
                                     } else {
-                                        $pathfilename = $prefixedfilename . '/' . $zipfilename;
+                                        $pathfilename = $prefixedfolder . '/' . $zipfilename;
                                     }
                                     $pathfilename = clean_param($pathfilename, PARAM_PATH);
                                     $filesforzipping[$pathfilename] = $file;
@@ -3190,15 +3379,7 @@ class assign {
                                 $submission->exportfullpath = false;
                                 $pluginfiles = $plugin->get_files($submission, $student);
                                 foreach ($pluginfiles as $zipfilename => $file) {
-                                    $subtype = $plugin->get_subtype();
-                                    $type = $plugin->get_type();
-                                    $prefixedfilename = clean_filename($prefix .
-                                                                       '_' .
-                                                                       $subtype .
-                                                                       '_' .
-                                                                       $type .
-                                                                       '_' .
-                                                                       $zipfilename);
+                                    $prefixedfilename = clean_filename($prefixedfolder . $zipfilename);
                                     $filesforzipping[$prefixedfilename] = $file;
                                 }
                             }
