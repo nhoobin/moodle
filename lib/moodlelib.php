@@ -2915,6 +2915,13 @@ function require_login($courseorid = null, $autologinguest = true, $cm = null, $
         $PAGE->set_course($course);
     }
 
+    $pluginsfunction = get_plugins_with_function('after_require_login', 'lib.php');
+    foreach ($pluginsfunction as $plugintype => $plugins) {
+        foreach ($plugins as $pluginfunction) {
+            $pluginfunction($courseorid, $autologinguest, $cm, $setwantsurltome, $preventredirect);
+        }
+    }
+
     // Finally access granted, update lastaccess times.
     user_accesstime_log($course->id);
 }
