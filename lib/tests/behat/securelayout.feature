@@ -19,3 +19,21 @@ Feature: Page displaying with secure layout
     When I follow "Fixture link"
     Then I should see "Acceptance test site" in the "nav" "css_element"
     But "Acceptance test site" "link" should not exist
+
+  Scenario: Confirm that the user name is displayed in the navbar without a link
+    Given I log in as "admin"
+    And the following config values are set as admin:
+      | shownameinsecurelayout | 1 |
+    And I am on "Course 1" course homepage
+    When I follow "Fixture link"
+    Then I should see "You are logged in as Admin User" in the "nav" "css_element"
+    But "Logout" "link" should not exist
+
+  Scenario: Confirm that custom menu appears
+    Given I log in as "admin"
+    And the following config values are set as admin:
+      | allowcustommenuinsecurelayout | 1 |
+      | custommenuitems | -This is a custom item\|/customurl/ |
+    And I am on "Course 1" course homepage
+    When I follow "Fixture link"
+    Then I should see "This is a custom item" in the "nav" "css_element"

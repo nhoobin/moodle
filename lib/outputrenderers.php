@@ -3454,6 +3454,19 @@ EOD;
     }
 
     /**
+     * Secure login info.
+     *
+     * @return string
+     */
+    public function secure_login_info() {
+        if (get_config('core', 'shownameinsecurelayout')) {
+            return $this->login_info(false);
+        } else {
+            return '';
+        }
+    }
+
+    /**
      * This renders the navbar.
      * Uses bootstrap compatible html.
      */
@@ -3616,6 +3629,10 @@ EOD;
      */
     public function custom_menu($custommenuitems = '') {
         global $CFG;
+
+        if ($this->page->pagelayout === 'secure' && !get_config('core', 'allowcustommenuinsecurelayout')) {
+            return '';
+        }
 
         if (empty($custommenuitems) && !empty($CFG->custommenuitems)) {
             $custommenuitems = $CFG->custommenuitems;
